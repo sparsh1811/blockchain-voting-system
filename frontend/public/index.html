@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Blockchain Voting System</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.5.2/dist/web3.min.js"></script>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="container mx-auto px-4">
+      <div class="bg-white shadow-md rounded-lg p-8">
+        <h1 class="text-3xl font-bold mb-6 text-center">
+          Blockchain Voting System
+        </h1>
+
+        <div id="connectWallet" class="mb-4">
+          <button
+            onclick="connectWallet()"
+            class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition"
+          >
+            Connect Wallet
+          </button>
+        </div>
+
+        <div id="votingPanel" style="display: none">
+          <div class="mb-4">
+            <label class="block text-gray-700 font-bold mb-2"
+              >Select Candidate</label
+            >
+            <select id="candidateSelect" class="w-full p-2 border rounded">
+              <!-- Candidates will be populated dynamically -->
+            </select>
+          </div>
+
+          <button
+            onclick="castVote()"
+            class="w-full bg-green-500 text-white py-2 rounded hover:bg-green-600 transition"
+          >
+            Cast Vote
+          </button>
+
+          <div id="results" class="mt-4">
+            <h2 class="text-xl font-semibold mb-2">Current Results</h2>
+            <div id="candidateResults">
+              <!-- Results will be populated dynamically -->
+            </div>
+          </div>
+        </div>
+
+        <div id="adminPanel" style="display: none" class="mt-4">
+          <h2 class="text-xl font-semibold mb-2">Admin Controls</h2>
+          <div class="flex space-x-2">
+            <input
+              type="text"
+              id="newCandidateName"
+              placeholder="New Candidate Name"
+              class="flex-grow p-2 border rounded"
+            />
+            <button
+              onclick="addCandidate()"
+              class="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600"
+            >
+              Add Candidate
+            </button>
+          </div>
+          <button
+            onclick="toggleVoting()"
+            id="votingStatusBtn"
+            class="w-full mt-2 bg-yellow-500 text-white py-2 rounded"
+          >
+            Toggle Voting Status
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let web3;
+      let votingContract;
+      const contractAddress = "YOUR_DEPLOYED_CONTRACT_ADDRESS";
+      const contractABI = [
+        /* Your contract ABI */
+      ];
+
+      async function connectWallet() {
+        if (window.ethereum) {
+          web3 = new Web3(window.ethereum);
+          try {
+            // Request account access
+            await window.ethereum.request({ method: "eth_requestAccounts" });
+
+            // Initialize contract
+            votingContract = new web3.eth.Contract(
+              contractABI,
+              contractAddress
+            );
+
+            // Check if user is admin
+            const accounts = await web3.eth.getAccounts();
+            const admin = await votingContract.methods.admin().call();
+
+            // Show voting panel
+            document.getElementById("connectWallet").style.display = "none";
+            document.getElementById("votingPanel").style.display = "block";
+
+            // If admin, show admin panel
+            if (accounts[0].toLowerCase() === admin.toLowerCase()) {
+              document.getElementById("adminPanel").style.display = "block";
+            }
+
+            // Load candidates and results
+            loadCandidates();
+            loadResults();
+          } catch (error) {
+            console.error("User denied account access");
+          }
+        } else {
+          alert("Please install MetaMask!");
+        }
+      }
+
+      async function loadCandidates() {
+        const candidatesCount = await votingContract.methods
+          .candidatesCount()
+          .call();
+        const candidateSelect = document.getElementById("candidateSelect");
+        candidateSelect.innerHTML = ""; // Clear previous options
+
+        for (let i = 1; i <= candidatesCount; i++) {
+          const candidate = await votingContract.methods.getCandidate(i).call();
+          const option = document.createElement("option");
+          option.value = candidate[0];
+          option.text = candidate[1];
+          candidateSelect.add(option);
+        }
+      }
+
+      async function loadResults() {
+        const candidatesCount = await votingContract.methods
+          .candidatesCount()
+          .call();
+        const resultsContainer = document.getElementById("candidateResults");
+        resultsContainer.innerHTML = ""; // Clear previous results
+
+        for (let i = 1; i <= candidatesCount; i++) {
+          const candidate = await votingContract.methods.getCandidate(i).call();
+          const resultDiv = document.createElement("div");
+          resultDiv.classList.add("mb-2", "p-2", "bg-gray-100", "rounded");
+          resultDiv.innerHTML = `
+                    <span class="font-bold">${candidate[1]}</span>: 
+                    <span>${candidate[2]} votes</span>
+                `;
+          resultsContainer.appendChild(resultDiv);
+        }
+      }
+
+      async function castVote() {
+        const accounts = await web3.eth.getAccounts();
+        const selectedCandidateId =
+          document.getElementById("candidateSelect").value;
+
+        try {
+          await votingContract.methods
+            .vote(selectedCandidateId)
+            .send({ from: accounts[0] });
+          alert("Vote cast successfully!");
+          loadResults(); // Refresh results
+        } catch (error) {
+          alert("Error casting vote: " + error.message);
+        }
+      }
+
+      async function addCandidate() {
+        const accounts = await web3.eth.getAccounts();
+        const newCandidateName =
+          document.getElementById("newCandidateName").value;
+
+        if (!newCandidateName) {
+          alert("Please enter a candidate name");
+          return;
+        }
+
+        try {
+          await votingContract.methods
+            .addCandidate(newCandidateName)
+            .send({ from: accounts[0] });
+          alert("Candidate added successfully!");
+          loadCandidates(); // Refresh candidates list
+          document.getElementById("newCandidateName").value = ""; // Clear input
+        } catch (error) {
+          alert("Error adding candidate: " + error.message);
+        }
+      }
+
+      async function toggleVoting() {
+        const accounts = await web3.eth.getAccounts();
+
+        try {
+          await votingContract.methods
+            .toggleVotingStatus()
+            .send({ from: accounts[0] });
+          const votingStatus = await votingContract.methods.votingOpen().call();
+          const btn = document.getElementById("votingStatusBtn");
+          btn.textContent = votingStatus ? "Close Voting" : "Open Voting";
+          alert(votingStatus ? "Voting is now open" : "Voting is now closed");
+        } catch (error) {
+          alert("Error changing voting status: " + error.message);
+        }
+      }
+    </script>
+  </body>
+</html>
